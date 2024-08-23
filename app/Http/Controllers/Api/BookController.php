@@ -7,12 +7,18 @@ use App\Http\Requests\Book\CreateBookRequest;
 use App\Http\Requests\Book\UpdateBookRequest;
 use App\Http\Resources\Book\BookResource;
 use App\Models\Book;
+use App\Src\Repository\BookServiceInterface;
+use App\Src\Services\BookService;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 
 class BookController extends Controller
 {
+    public function __construct(private BookServiceInterface $bookService)
+    {
+
+    }
     public function index(): JsonResponse
     {
         $books = Auth::user()->books()->with('category', 'tags', 'user')->get();
@@ -22,15 +28,10 @@ class BookController extends Controller
 
     public function store(CreateBookRequest $request): JsonResponse
     {
-        $book = $request->user()->books()->create($request->all());
-
-        if ($tags = json_decode($request->tags)) {
-            $book->tags()->attach($tags);
+        $book = $this->bookService->createBook($request->all(), $request->user());
+        if ($request->file('image')) {
+            $book = $this->bookService->storeBookImage($book, $request->file('image'));
         }
-
-        $book->image_thumbnail = $request->file('image')->store('books', 'public');
-        $book->save();
-
         return response()->json(new BookResource($book), Response::HTTP_CREATED);
     }
 
@@ -46,15 +47,10 @@ class BookController extends Controller
     {
         $this->authorize('update', $book);
 
-        $book->update($request->all());
-
-        if ($tags = json_decode($request->tags)) {
-            $book->tags()->sync($tags);
-        }
-
+        $this->bookService->updateBook($book, $request->all());
+        
         if ($request->file('image')) {
-            $book->image_thumbnail = $request->file('image')->store('books', 'public');
-            $book->save();
+            $this->bookService->storeBookImage($book, $request->file('image'));
         }
 
         return response()->json(new BookResource($book), Response::HTTP_OK);
